@@ -20,20 +20,78 @@ func main() {
 	year, month, day := time.Now().Date()
 	hour, min, sec := time.Now().Clock()
 	fmt.Println("start at", strconv.Itoa(year)+"-"+month.String()+"-"+strconv.Itoa(day)+" "+strconv.Itoa(hour)+":"+strconv.Itoa(min)+":"+strconv.Itoa(sec))
+	lien, options := getArgs()
+	workWithOption(options, lien)
+}
 
+func getArgs() (string, []string) {
+	lien := ""
+	var options []string
+	for i := 1; i < len(os.Args); i++ {
+		if strings.HasPrefix(os.Args[i], "-") {
+			options = append(options, os.Args[i])
+		} else if strings.Contains(os.Args[i], "http") {
+			lien = os.Args[i]
+		}
+	}
+	return lien, options
+}
+
+func workWithOption(options []string, lien string) {
+	newFilename := ""
+	outputFolder := ""
+	for _, option := range options {
+		if strings.Contains(option, "-B=") {
+			// fmt not use in this case, use export in wget-log
+		} else if strings.Contains(option, "-O=") {
+			newFilename = option[3:]
+		} else if strings.Contains(option, "-P=") {
+			outputFolder = option[3:]
+		} else if strings.Contains(option, "--rate-limit=") {
+			// je ne sais pas comment faire, je compte sur github-copilote.
+		}
+	}
+	for _, option := range options {
+		if strings.Contains(option, "-i=") {
+			fileLink := option[3:]
+			// read the file
+			file, err := os.Open(fileLink)
+			if err != nil {
+				fmt.Println(err.Error())
+				return
+			}
+			defer file.Close()
+			// split the data file on "\n"
+			data := make([]byte, 100)
+			_, err = file.Read(data)
+			if err != nil {
+				fmt.Println(err.Error())
+				return
+			}
+			// for each line, call the linkWorker function
+			liens := strings.Split(string(data), "\n")
+			for _, lien := range liens {
+				linkWorker(lien, newFilename, outputFolder)
+				fmt.Println("work ended for", lien)
+			}
+		}
+	}
+}
+
+func linkWorker(lien string, newFilename string, outputFolder string) {
 	// sending request, awaiting response...
 	print("sending request, awaiting response... ")
-	lien, options := getArgs()
 	resp, err := http.Get(lien)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 	defer resp.Body.Close()
-
 	fmt.Println("status", resp.Status)
-	fmt.Println(options)
-
+	if newFilename == "" {
+		// Obtenir le nom du fichier à partir de l'URL
+		newFilename = filepath.Base(lien)
+	}
 	// Determine the file extension from the Content-Type header
 	contentType := resp.Header.Get("Content-Type")
 	fileExt := getFileExtension(contentType)
@@ -41,7 +99,7 @@ func main() {
 	switch {
 	case strings.HasPrefix(contentType, "image"):
 		// Handle image files
-		handleImage(resp.Body, fileExt)
+		handleImage(resp.Body, fileExt, newFilename, outputFolder)
 	case strings.HasPrefix(contentType, "application/pdf"):
 		// Handle PDF files
 		fmt.Println("PDF file received. You can handle it using a PDF library.")
@@ -59,18 +117,7 @@ func main() {
 	}
 }
 
-func getArgs() (string, []string) {
-	lien := ""
-	var options []string
-	for i := 1; i < len(os.Args); i++ {
-		if strings.HasPrefix(os.Args[i], "-") {
-			options = append(options, os.Args[i])
-		} else if strings.Contains(os.Args[i], "http") {
-			lien = os.Args[i]
-		}
-	}
-	return lien, options
-}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func getFileExtension(contentType string) string {
 	if strings.Contains(contentType, "image/png") {
@@ -86,26 +133,25 @@ func getFileExtension(contentType string) string {
 	}
 }
 
-func handleImage(reader io.Reader, fileExt string) {
+func handleImage(reader io.Reader, fileExt string, newFilename string, outputFolder string) {
 	img, _, err := image.Decode(reader)
 	if err != nil {
 		fmt.Println("Error decoding image:", err)
 		return
 	}
-	fmt.Println("Image loaded successfully.")
 	// Example of saving the image
-	saveImage(img, "downloaded_image"+fileExt)
+	saveImage(img, newFilename, outputFolder)
 }
 
-func saveImage(img image.Image, filename string) {
-	file, err := os.Create(filename)
+func saveImage(img image.Image, newFilename string, outputFolder string) {
+	file, err := os.Create(newFilename)
 	if err != nil {
 		fmt.Println("Error creating image file:", err)
 		return
 	}
 	defer file.Close()
 
-	switch filepath.Ext(filename) {
+	switch filepath.Ext(newFilename) {
 	case ".png":
 		png.Encode(file, img)
 	case ".jpeg", ".jpg":
@@ -120,7 +166,7 @@ func cloneWebsite(body io.Reader, baseURL, outputFolder string) error {
 	if err != nil {
 		return err
 	}
-	downloadAssets(baseURL, htmlContent, outputFolder+"/")
+	downloadAssets(baseURL, htmlContent, outputFolder)
 	return nil
 }
 
