@@ -19,7 +19,7 @@ import (
 func main() {
 	year, month, day := time.Now().Date()
 	hour, min, sec := time.Now().Clock()
-	fmt.Println("start at", strconv.Itoa(year)+"-"+month.String()+"-"+strconv.Itoa(day)+" "+strconv.Itoa(hour)+":"+strconv.Itoa(min)+":"+strconv.Itoa(sec))
+	fmt.Println("start", strconv.Itoa(year)+"-"+strconv.Itoa(int(month))+"-"+strconv.Itoa(day)+" "+strconv.Itoa(hour)+":"+strconv.Itoa(min)+":"+strconv.Itoa(sec)+"--")
 
 	// sending request, awaiting response...
 	print("sending request, awaiting response... ")
