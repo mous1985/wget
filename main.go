@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
@@ -31,15 +34,29 @@ func main() {
 	fmt.Println("status", resp.Status)
 	fmt.Println(options)
 
-	// Read the HTML content
-	htmlContent, err := parseHTML(resp.Body)
-	if err != nil {
-		fmt.Println("Error parsing HTML:", err)
-		return
-	}
+	// Determine the file extension from the Content-Type header
+	contentType := resp.Header.Get("Content-Type")
+	fileExt := getFileExtension(contentType)
 
-	// Download CSS and JavaScript files
-	downloadAssets(lien, htmlContent, "output_folder")
+	switch {
+	case strings.HasPrefix(contentType, "image"):
+		// Handle image files
+		handleImage(resp.Body, fileExt)
+	case strings.HasPrefix(contentType, "application/pdf"):
+		// Handle PDF files
+		fmt.Println("PDF file received. You can handle it using a PDF library.")
+	case strings.HasPrefix(contentType, "text/html"):
+		// Handle HTML content
+		outputFolder := "website_clone"
+		err := cloneWebsite(resp.Body, lien, outputFolder)
+		if err != nil {
+			fmt.Println("Error cloning website:", err)
+		}
+	default:
+		// Handle other file types as binary data
+		saveBinaryFile(resp.Body, "output"+fileExt)
+		fmt.Println("Binary file saved successfully.")
+	}
 }
 
 func getArgs() (string, []string) {
@@ -53,6 +70,70 @@ func getArgs() (string, []string) {
 		}
 	}
 	return lien, options
+}
+
+func getFileExtension(contentType string) string {
+	if strings.Contains(contentType, "image/png") {
+		return ".png"
+	} else if strings.Contains(contentType, "image/jpeg") {
+		return ".jpeg"
+	} else if strings.Contains(contentType, "application/pdf") {
+		return ".pdf"
+	} else if strings.Contains(contentType, "text/html") {
+		return ".html"
+	} else {
+		return ".bin"
+	}
+}
+
+func handleImage(reader io.Reader, fileExt string) {
+	img, _, err := image.Decode(reader)
+	if err != nil {
+		fmt.Println("Error decoding image:", err)
+		return
+	}
+	fmt.Println("Image loaded successfully.")
+	// Example of saving the image
+	saveImage(img, "downloaded_image"+fileExt)
+}
+
+func saveImage(img image.Image, filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Println("Error creating image file:", err)
+		return
+	}
+	defer file.Close()
+
+	switch filepath.Ext(filename) {
+	case ".png":
+		png.Encode(file, img)
+	case ".jpeg", ".jpg":
+		jpeg.Encode(file, img, nil)
+	default:
+		fmt.Println("Unsupported image format for saving")
+	}
+}
+
+func cloneWebsite(body io.Reader, baseURL, outputFolder string) error {
+	htmlContent, err := parseHTML(body)
+	if err != nil {
+		return err
+	}
+	downloadAssets(baseURL, htmlContent, outputFolder+"/")
+	return nil
+}
+
+// Add the functions `saveBinaryFile` and any other helper functions here as they are from your original code or new implementations.
+func saveBinaryFile(reader io.Reader, filename string) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, reader)
+	return err
 }
 
 func parseHTML(body io.Reader) (string, error) {
