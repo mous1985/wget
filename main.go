@@ -2,62 +2,94 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
-// downloadFile downloads a file from a given URL and saves it to a specified destination.
-func downloadFile(url, destination string) error {
-	// Make an HTTP GET request to the specified URL
-	response, err := http.Get(url)
+func main() {
+	year, month, day := time.Now().Date()
+	hour, min, sec := time.Now().Clock()
+	fmt.Println("start at", strconv.Itoa(year)+"-"+month.String()+"-"+strconv.Itoa(day)+" "+strconv.Itoa(hour)+":"+strconv.Itoa(min)+":"+strconv.Itoa(sec))
+
+	// sending request, awaiting response...
+	print("sending request, awaiting response... ")
+	lien, options := getArgs()
+	resp, err := http.Get(lien)
 	if err != nil {
-		return err
+		fmt.Println("Error:", err)
+		return
 	}
-	defer response.Body.Close()
+	defer resp.Body.Close()
 
-	// Check if the HTTP response status code is OK (200)
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP response error: %s", response.Status)
+	fmt.Println("status", resp.Status)
+	fmt.Println(options)
+
+	// Determine the file extension from the Content-Type header
+	fileExt := getFileExtension(resp.Header.Get("Content-Type"))
+
+	switch fileExt {
+	case ".png", ".jpg", ".jpeg":
+		// Read the image
+		img, _, err := image.Decode(resp.Body)
+		if err != nil {
+			fmt.Println("Error decoding image:", err)
+			return
+		}
+
+		// You can now work with the 'img' variable which contains the image.
+		// For example, you can save it to a file or perform other operations.
+		fmt.Println("Image loaded successfully.")
+
+	case ".pdf":
+		// You can use a PDF library to handle PDF files (e.g., github.com/unidoc/unipdf).
+		fmt.Println("PDF file received. You can handle it using a PDF library.")
+	default:
+		// For other file types, read the content as a binary file
+		saveBinaryFile(resp.Body, "output"+fileExt)
+		fmt.Println("Binary file saved successfully.")
 	}
-
-	// Create a new file at the destination
-	out, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Copy the contents of the HTTP response body to the file
-	_, err = io.Copy(out, response.Body)
-	return err
 }
 
-func main() {
-	// Check if the correct number of command-line arguments is provided
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: go run . [URL]")
-		os.Exit(1)
+func getArgs() (string, []string) {
+	lien := ""
+	var options []string
+	for i := 1; i < len(os.Args); i++ {
+		if strings.HasPrefix(os.Args[i], "-") {
+			options = append(options, os.Args[i])
+		} else if strings.Contains(os.Args[i], "http") {
+			lien = os.Args[i]
+		}
 	}
+	return lien, options
+}
 
-	// Get the URL from the command-line arguments
-	url := os.Args[1]
+func getFileExtension(contentType string) string {
+	switch contentType {
+	case "image/png":
+		return ".png"
+	case "image/jpeg":
+		return ".jpeg"
+	case "application/pdf":
+		return ".pdf"
+	// Add more cases for other content types as needed
+	default:
+		// If the content type is unknown, assume it's a binary file
+		return ".bin"
+	}
+}
 
-	// Extract the filename from the URL
-	filename := filepath.Base(url)
-
-	// Display a message indicating the start of the download
-	fmt.Printf("Downloading %s...\n", filename)
-
-	// Call the downloadFile function to download the file
-	err := downloadFile(url, filename)
+func saveBinaryFile(reader io.Reader, filename string) error {
+	file, err := os.Create(filename)
 	if err != nil {
-		// Display an error message and exit if there's an error during download
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
+	defer file.Close()
 
-	// Display a message indicating the successful download
-	fmt.Printf("Downloaded %s\n", filename)
+	_, err = io.Copy(file, reader)
+	return err
 }
