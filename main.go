@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 func main() {
@@ -29,30 +31,15 @@ func main() {
 	fmt.Println("status", resp.Status)
 	fmt.Println(options)
 
-	// Determine the file extension from the Content-Type header
-	fileExt := getFileExtension(resp.Header.Get("Content-Type"))
-
-	switch fileExt {
-	case ".png", ".jpg", ".jpeg":
-		// Read the image
-		img, _, err := image.Decode(resp.Body)
-		if err != nil {
-			fmt.Println("Error decoding image:", err)
-			return
-		}
-
-		// You can now work with the 'img' variable which contains the image.
-		// For example, you can save it to a file or perform other operations.
-		fmt.Println("Image loaded successfully.")
-
-	case ".pdf":
-		// You can use a PDF library to handle PDF files (e.g., github.com/unidoc/unipdf).
-		fmt.Println("PDF file received. You can handle it using a PDF library.")
-	default:
-		// For other file types, read the content as a binary file
-		saveBinaryFile(resp.Body, "output"+fileExt)
-		fmt.Println("Binary file saved successfully.")
+	// Read the HTML content
+	htmlContent, err := parseHTML(resp.Body)
+	if err != nil {
+		fmt.Println("Error parsing HTML:", err)
+		return
 	}
+
+	// Download CSS and JavaScript files
+	downloadAssets(lien, htmlContent, "output_folder")
 }
 
 func getArgs() (string, []string) {
@@ -68,28 +55,79 @@ func getArgs() (string, []string) {
 	return lien, options
 }
 
-func getFileExtension(contentType string) string {
-	switch contentType {
-	case "image/png":
-		return ".png"
-	case "image/jpeg":
-		return ".jpeg"
-	case "application/pdf":
-		return ".pdf"
-	// Add more cases for other content types as needed
-	default:
-		// If the content type is unknown, assume it's a binary file
-		return ".bin"
+func parseHTML(body io.Reader) (string, error) {
+	tokenizer := html.NewTokenizer(body)
+	var htmlContent strings.Builder
+
+	for {
+		tokenType := tokenizer.Next()
+		switch tokenType {
+		case html.ErrorToken:
+			return htmlContent.String(), nil
+		case html.TextToken, html.StartTagToken, html.SelfClosingTagToken, html.EndTagToken:
+			htmlContent.WriteString(tokenizer.Token().String())
+		}
 	}
 }
 
-func saveBinaryFile(reader io.Reader, filename string) error {
-	file, err := os.Create(filename)
+func downloadAssets(baseURL, htmlContent, outputFolder string) {
+	doc, err := html.Parse(strings.NewReader(htmlContent))
 	if err != nil {
-		return err
+		fmt.Println("Error parsing HTML:", err)
+		return
 	}
-	defer file.Close()
 
-	_, err = io.Copy(file, reader)
-	return err
+	// Create the output folder if it doesn't exist
+	if _, err := os.Stat(outputFolder); os.IsNotExist(err) {
+		os.Mkdir(outputFolder, os.ModePerm)
+	}
+
+	var downloadFile func(node *html.Node)
+	downloadFile = func(node *html.Node) {
+		if node.Type == html.ElementNode {
+			if node.Data == "link" || node.Data == "script" {
+				for _, attr := range node.Attr {
+					if attr.Key == "href" || attr.Key == "src" {
+						fileURL := attr.Val
+						if !strings.HasPrefix(fileURL, "http") {
+							fileURL = baseURL + "/" + fileURL
+						}
+
+						resp, err := http.Get(fileURL)
+						if err != nil {
+							fmt.Println("Error downloading file:", err)
+							return
+						}
+						defer resp.Body.Close()
+
+						// Extract the file name from the URL
+						fileName := filepath.Base(fileURL)
+
+						// Save the file to the output folder
+						outputPath := filepath.Join(outputFolder, fileName)
+						file, err := os.Create(outputPath)
+						if err != nil {
+							fmt.Println("Error creating file:", err)
+							return
+						}
+						defer file.Close()
+
+						_, err = io.Copy(file, resp.Body)
+						if err != nil {
+							fmt.Println("Error copying file content:", err)
+							return
+						}
+
+						fmt.Println("Downloaded:", fileURL)
+					}
+				}
+			}
+		}
+
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			downloadFile(child)
+		}
+	}
+
+	downloadFile(doc)
 }
