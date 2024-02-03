@@ -22,7 +22,7 @@ func main() {
 	fmt.Println("start at", strconv.Itoa(year)+"-"+month.String()+"-"+strconv.Itoa(day)+" "+strconv.Itoa(hour)+":"+strconv.Itoa(min)+":"+strconv.Itoa(sec))
 	lien, options := getArgs()
 	workWithOption(options, lien)
-	test()
+	// test()
 }
 
 func getArgs() (string, []string) {
@@ -171,9 +171,9 @@ func cloneWebsite(body io.Reader, baseURL, outputFolder string) error {
 	return nil
 }
 
-func test() {
-	fmt.Println("test")
-}
+// func test() {
+// 	fmt.Println("test")
+// }
 
 // Add the functions `saveBinaryFile` and any other helper functions here as they are from your original code or new implementations.
 func saveBinaryFile(reader io.Reader, filename string) error {
