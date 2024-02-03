@@ -19,21 +19,21 @@ import (
 func main() {
 	year, month, day := time.Now().Date()
 	hour, min, sec := time.Now().Clock()
-	fmt.Println("start at", strconv.Itoa(year)+"-"+month.String()+"-"+strconv.Itoa(day)+" "+strconv.Itoa(hour)+":"+strconv.Itoa(min)+":"+strconv.Itoa(sec))
+	fmt.Println("start", strconv.Itoa(year)+"-"+strconv.Itoa(int(month))+"-"+strconv.Itoa(day)+" "+strconv.Itoa(hour)+":"+strconv.Itoa(min)+":"+strconv.Itoa(sec)+"--")
 
 	// sending request, awaiting response...
 	print("sending request, awaiting response... ")
+	lien, options := getArgs()
 	resp, err := http.Get(lien)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
 	}
 	defer resp.Body.Close()
+
 	fmt.Println("status", resp.Status)
-	if newFilename == "" {
-		// Obtenir le nom du fichier à partir de l'URL
-		newFilename = filepath.Base(lien)
-	}
+	fmt.Println(options)
+
 	// Determine the file extension from the Content-Type header
 	contentType := resp.Header.Get("Content-Type")
 	fileExt := getFileExtension(contentType)
@@ -41,7 +41,7 @@ func main() {
 	switch {
 	case strings.HasPrefix(contentType, "image"):
 		// Handle image files
-		handleImage(resp.Body, fileExt, newFilename, outputFolder)
+		handleImage(resp.Body, fileExt)
 	case strings.HasPrefix(contentType, "application/pdf"):
 		// Handle PDF files
 		fmt.Println("PDF file received. You can handle it using a PDF library.")
@@ -59,7 +59,18 @@ func main() {
 	}
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+func getArgs() (string, []string) {
+	lien := ""
+	var options []string
+	for i := 1; i < len(os.Args); i++ {
+		if strings.HasPrefix(os.Args[i], "-") {
+			options = append(options, os.Args[i])
+		} else if strings.Contains(os.Args[i], "http") {
+			lien = os.Args[i]
+		}
+	}
+	return lien, options
+}
 
 func getFileExtension(contentType string) string {
 	if strings.Contains(contentType, "image/png") {
@@ -75,25 +86,26 @@ func getFileExtension(contentType string) string {
 	}
 }
 
-func handleImage(reader io.Reader, fileExt string, newFilename string, outputFolder string) {
+func handleImage(reader io.Reader, fileExt string) {
 	img, _, err := image.Decode(reader)
 	if err != nil {
 		fmt.Println("Error decoding image:", err)
 		return
 	}
+	fmt.Println("Image loaded successfully.")
 	// Example of saving the image
-	saveImage(img, newFilename, outputFolder)
+	saveImage(img, "downloaded_image"+fileExt)
 }
 
-func saveImage(img image.Image, newFilename string, outputFolder string) {
-	file, err := os.Create(newFilename)
+func saveImage(img image.Image, filename string) {
+	file, err := os.Create(filename)
 	if err != nil {
 		fmt.Println("Error creating image file:", err)
 		return
 	}
 	defer file.Close()
 
-	switch filepath.Ext(newFilename) {
+	switch filepath.Ext(filename) {
 	case ".png":
 		png.Encode(file, img)
 	case ".jpeg", ".jpg":
@@ -108,7 +120,7 @@ func cloneWebsite(body io.Reader, baseURL, outputFolder string) error {
 	if err != nil {
 		return err
 	}
-	downloadAssets(baseURL, htmlContent, outputFolder)
+	downloadAssets(baseURL, htmlContent, outputFolder+"/")
 	return nil
 }
 
